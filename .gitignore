@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/index/*
+!data/index/bge-small-en-v1.5/
+.cache/
