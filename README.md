@@ -1,16 +1,3 @@
----
-title: EU AI Act & GDPR Assistant
-emoji: ⚖️
-colorFrom: blue
-colorTo: indigo
-sdk: gradio
-sdk_version: 6.31.0
-app_file: app.py
-pinned: false
-license: mit
-short_description: Cited answers from the AI Act and GDPR texts, with an eval
----
-
 # EU AI Act & GDPR assistant: RAG with an evaluation harness
 
 A question-answering assistant over the full text of the **EU AI Act** (Regulation 2024/1689)
@@ -21,7 +8,11 @@ The point of the project is less the chatbot than the **measurement**: a 76-ques
 with gold articles, a fixed dev/test split, and an ablation of every retrieval choice, so each
 design decision is backed by a number.
 
-**Demo:** {{DEMO_URL}} · Information, not legal advice.
+**Demo:** screenshots below; run it locally with `python app.py` (see *Run it*). Information, not legal advice.
+
+| A cited answer (sources expanded) | Declining an out-of-scope question |
+|---|---|
+| <img src="docs/answer.png" width="420" alt="Answer citing AI Act Article 5(1)(f)"> | <img src="docs/decline.png" width="420" alt="Fixed-sentence decline for a VAT question"> |
 
 ## Results (held-out test split)
 
