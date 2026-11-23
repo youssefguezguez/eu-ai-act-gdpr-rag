@@ -1,0 +1,11 @@
+# Deployed API (Render / Docker): no torch. Queries are embedded with the ONNX export of the
+# same model (src/onnx_embed.py); tests/test_onnx_parity.py checks it matches sentence-transformers.
+numpy==2.5.4
+rank-bm25==0.2.2
+groq==1.7.0
+python-dotenv==1.2.4
+onnxruntime==1.32.0
+tokenizers==0.23.3
+fastapi==0.162.2
+uvicorn==0.54.0
+pydantic==2.14.3

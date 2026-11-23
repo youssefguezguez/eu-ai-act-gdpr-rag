@@ -8,7 +8,8 @@ The point of the project is less the chatbot than the **measurement**: a 76-ques
 with gold articles, a fixed dev/test split, and an ablation of every retrieval choice, so each
 design decision is backed by a number.
 
-**Demo:** screenshots below; run it locally with `python app.py` (see *Run it*). Information, not legal advice.
+**Live demo:** {{DEMO_URL}} (free hosting: the first question after a quiet period takes about a minute while
+the server wakes up). JSON API docs at `/docs`. Information, not legal advice. [![CI](https://github.com/youssefguezguez/eu-ai-act-gdpr-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/youssefguezguez/eu-ai-act-gdpr-rag/actions/workflows/ci.yml)
 
 | A cited answer (sources expanded) | Declining an out-of-scope question |
 |---|---|
@@ -144,6 +145,24 @@ Takeaways:
 - Free-tier limits: 8k tokens/min and 200k tokens/day per model. When the main model's daily
   quota is used up, the demo falls back to `gpt-oss-20b`, and the answer footer says so.
 
+## Deployment
+
+The live demo is a **FastAPI** service (`api.py`) in a **Docker** image on Render's free plan
+(512 MB RAM), built and redeployed on every push to `main`.
+
+- **No PyTorch at serving time.** The index was built with sentence-transformers; queries are
+  embedded with BAAI's official ONNX export of the same model on onnxruntime
+  (`src/onnx_embed.py`). `tests/test_onnx_parity.py` checks the two encoders on all 76
+  evaluation questions: cosine > 0.9999 and **identical top-8 rankings**, so the reported
+  results still hold. Memory: ~250 MB resident instead of over 1 GB with torch.
+- **Endpoints:** `GET /` web page, `POST /ask` cited answer as JSON, `GET /health`.
+- **Abuse limits** (it spends a free API key): questions ≤ 500 characters, per-IP rate limit
+  (4/min, 40/day), at most 2 answers generated at once.
+- **Logs** keep latency, tokens, model and decline/citation counts per answer, never the
+  question text. A local run: ~2 s and ~2.3k tokens per answer (rewrite + answer calls).
+- **CI** (GitHub Actions): unit + API tests with the LLM stubbed, then a Docker build and a
+  `/health` smoke test of the container.
+
 ## Run it
 
 ```bash
@@ -155,6 +174,8 @@ python src/ingest.py                                 # EUR-Lex HTML -> data/proc
 python src/retrieve.py --build                       # embedding index (included in the repo)
 python src/generate.py "Is emotion recognition at work allowed?"
 python app.py                                        # Gradio demo
+EMBED_BACKEND=onnx uvicorn api:app --port 8000        # the deployed API (after scripts/fetch_onnx.py)
+pytest -q                                            # tests (ONNX parity runs when torch is installed)
 
 python eval/eval_retrieval.py --split dev            # retrieval metrics, no API calls
 python eval/experiments.py                           # the ablation table above
@@ -167,7 +188,12 @@ python eval/eval_generation.py --split dev           # end-to-end answers + judg
 src/ingest.py        EUR-Lex HTML -> structure-aware chunks
 src/retrieve.py      BM25 / dense / hybrid / rerank, recital penalty, multi-query fusion
 src/generate.py      query rewriting, cited generation, decline detection, rate-limit handling
-app.py               Gradio demo (Hugging Face Spaces entry point)
+api.py               FastAPI service (deployed): web page, /ask, /health, rate limits
+web/index.html       the deployed web page
+src/onnx_embed.py    torch-free query encoder (ONNX) for the API
+app.py               Gradio demo (local)
+tests/               unit, API and ONNX-parity tests
+Dockerfile, render.yaml, .github/workflows/ci.yml   container, Render blueprint, CI
 eval/questions.jsonl 76 questions with gold chunk ids
 eval/*.py            retrieval eval, ablations, rewrite eval, end-to-end eval with LLM judge
 eval/results/        all logged runs, generated answers, judge audit

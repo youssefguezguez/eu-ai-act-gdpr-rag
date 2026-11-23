@@ -1,0 +1,12 @@
+.venv
+.cache
+.env
+.git
+__pycache__
+*.pyc
+data/raw
+eval
+docs
+scripts/*
+!scripts/fetch_onnx.py
+tests

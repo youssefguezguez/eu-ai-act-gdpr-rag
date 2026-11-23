@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 from functools import cached_property
 from pathlib import Path
@@ -79,6 +80,11 @@ class Retriever:
 
     @cached_property
     def model(self):
+        # EMBED_BACKEND=onnx: torch-free query encoder for the deployed API (same vectors,
+        # see tests/test_onnx_parity.py). Building the index still uses sentence-transformers.
+        if os.getenv("EMBED_BACKEND") == "onnx" and self.embed_model == EMBED_MODEL:
+            from onnx_embed import OnnxEncoder
+            return OnnxEncoder()
         from sentence_transformers import SentenceTransformer
         return SentenceTransformer(self.embed_model)
 

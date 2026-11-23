@@ -78,7 +78,8 @@ class Generator:
             raise RuntimeError("GROQ_API_KEY missing: put it in .env")
         return Groq()
 
-    def chat(self, messages: list[dict], model: str | None = None, max_tokens: int = 1200, **kw) -> str:
+    def chat(self, messages: list[dict], model: str | None = None, max_tokens: int = 1200,
+             usage: dict | None = None, **kw) -> str:
         model = model or self.model
         if model.startswith("openai/gpt-oss"):
             kw.setdefault("reasoning_effort", self.reasoning_effort)
@@ -86,6 +87,8 @@ class Generator:
             try:
                 r = self.client.chat.completions.create(model=model, messages=messages, temperature=0,
                                                         max_tokens=max_tokens, **kw)
+                if usage is not None and getattr(r, "usage", None):  # tokens per answer, for the API log
+                    usage["tokens"] = usage.get("tokens", 0) + (r.usage.total_tokens or 0)
                 return (r.choices[0].message.content or "").strip()
             except Exception as e:  # rate limits on the free tier: wait as told, then retry
                 if "429" not in str(e) and "rate" not in str(e).lower() or attempt == 5:
@@ -97,18 +100,20 @@ class Generator:
                 time.sleep(wait)
         raise RuntimeError("unreachable")
 
-    def rewrite(self, question: str) -> str:
+    def rewrite(self, question: str, usage: dict | None = None) -> str:
         return self.chat([{"role": "system", "content": REWRITE_SYSTEM},
-                          {"role": "user", "content": question}], model=self.rewrite_model, max_tokens=600)
+                          {"role": "user", "content": question}], model=self.rewrite_model, max_tokens=600,
+                         usage=usage)
 
     def answer(self, question: str, rewrite: bool = True) -> dict:
         t = time.perf_counter()
-        rewrites = [self.rewrite(question)] if rewrite else []
+        usage: dict = {}
+        rewrites = [self.rewrite(question, usage)] if rewrite else []
         chunks = self.retriever.search(question, self.k, rewrites=rewrites)
         text = self.chat([
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": f"Sources:\n\n{format_sources(chunks)}\n\nQuestion: {question}"},
-        ])
+        ], usage=usage)
         text = normalise_citations(text)
         declined = text.startswith(DECLINE[:40])
         nums = sorted({int(n) for n in CITE.findall(text) if 1 <= int(n) <= len(chunks)})
@@ -123,6 +128,7 @@ class Generator:
             "rewrites": rewrites,
             "model": self.model,
             "seconds": round(time.perf_counter() - t, 2),
+            "tokens": usage.get("tokens", 0),
         }
 
 

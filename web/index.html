@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EU AI Act & GDPR assistant</title>
+<style>
+  :root { --bg:#fafaf8; --fg:#1d1d1f; --muted:#5f6368; --card:#fff; --line:#e3e3e0; --accent:#1f4fd1; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#151517; --fg:#ececec; --muted:#a0a0a6; --card:#1f1f22; --line:#333338; --accent:#8fb0ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:1.6rem; margin:0 0 8px; }
+  p.lead { color:var(--muted); margin:0 0 24px; }
+  a { color:var(--accent); }
+  textarea { width:100%; min-height:84px; padding:12px; font:inherit; color:inherit; background:var(--card);
+             border:1px solid var(--line); border-radius:10px; resize:vertical; }
+  button { margin-top:10px; padding:10px 20px; font:inherit; font-weight:600; color:#fff; background:var(--accent);
+           border:0; border-radius:10px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .examples { margin:14px 0 0; display:flex; flex-wrap:wrap; gap:8px; }
+  .examples button { margin:0; padding:6px 12px; font-size:.85rem; font-weight:400; color:var(--fg);
+                     background:var(--card); border:1px solid var(--line); }
+  .card { margin-top:24px; padding:16px 18px; background:var(--card); border:1px solid var(--line); border-radius:12px; }
+  .meta { color:var(--muted); font-size:.8rem; margin-top:10px; }
+  details { margin-top:16px; }
+  summary { cursor:pointer; font-weight:600; }
+  .src { margin:12px 0; padding-left:12px; border-left:3px solid var(--line); font-size:.9rem; }
+  .src.cited { border-color:var(--accent); }
+  .src .t { color:var(--muted); white-space:pre-wrap; }
+  footer { margin-top:40px; color:var(--muted); font-size:.85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>EU AI Act &amp; GDPR assistant</h1>
+  <p class="lead">Answers come only from the official texts of the
+    <a href="https://eur-lex.europa.eu/eli/reg/2024/1689/oj">AI Act (Regulation 2024/1689)</a> and the
+    <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">GDPR (Regulation 2016/679)</a>. Every claim cites the
+    article it relies on; if the texts don't cover a question, the assistant says so.
+    <em>Information, not legal advice.</em></p>
+
+  <textarea id="q" maxlength="500" placeholder="e.g. Is emotion recognition at work allowed?"></textarea>
+  <button id="ask">Ask</button>
+  <div class="examples" id="ex"></div>
+
+  <div id="out"></div>
+
+  <footer>Free hosting: the first question after a quiet period can take about a minute while the server wakes up.
+    Code, evaluation set and results:
+    <a href="https://github.com/youssefguezguez/eu-ai-act-gdpr-rag">github.com/youssefguezguez/eu-ai-act-gdpr-rag</a>
+    · <a href="/docs">API docs</a></footer>
+</main>
+<script>
+const EXAMPLES = [
+  "Can my employer use AI to read my emotions during video calls?",
+  "We sell a CV-screening tool. Is it high-risk under the AI Act?",
+  "How quickly must a company report a personal data breach?",
+  "What must a chatbot tell users about being an AI?",
+  "What is the VAT rate on AI software in Germany?",
+];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+for (const e of EXAMPLES) {
+  const b = document.createElement("button");
+  b.textContent = e;
+  b.onclick = () => { $("q").value = e; ask(); };
+  $("ex").appendChild(b);
+}
+
+function render(d) {
+  const byN = Object.fromEntries(d.sources.map((s) => [s.n, s]));
+  let html = esc(d.answer).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  if (!d.declined) {
+    html = html.replace(/\[(\d+)\]/g, (m, n) => byN[n]
+      ? `<a href="${esc(byN[n].url)}" title="${esc(byN[n].heading)}" target="_blank" rel="noopener">[${n}]</a>` : m);
+  }
+  const cited = new Set(d.cited_ids);
+  const srcs = d.sources.map((s) => `<div class="src${cited.has(s.id) ? " cited" : ""}">
+      <a href="${esc(s.url)}" target="_blank" rel="noopener"><strong>[${s.n}] ${esc(s.heading)}</strong></a>${cited.has(s.id) ? " · cited" : ""}
+      <div class="t">${esc(s.text.length > 700 ? s.text.slice(0, 700) + " …" : s.text)}</div></div>`).join("");
+  const rw = d.rewrites && d.rewrites.length ? `<p class="meta">Search also used this legal rephrasing: ${esc(d.rewrites[0])}</p>` : "";
+  $("out").innerHTML = `<div class="card"><div>${html.replace(/\n/g, "<br>")}</div>
+    <div class="meta">${d.seconds} s · ${esc(d.model)} · ${d.cited_ids.length} source(s) cited</div>
+    <details><summary>Sources retrieved (${d.sources.length})</summary>${srcs}${rw}</details></div>`;
+}
+
+async function ask() {
+  const q = $("q").value.trim();
+  if (!q) return;
+  $("ask").disabled = true;
+  $("out").innerHTML = `<div class="card meta">Searching the texts and writing a cited answer (5–20 s)…</div>`;
+  try {
+    const r = await fetch("/ask", { method: "POST", headers: { "Content-Type": "application/json" },
+                                     body: JSON.stringify({ question: q }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : "Please keep questions under 500 characters.");
+    render(d);
+  } catch (e) {
+    $("out").innerHTML = `<div class="card">${esc(e.message || "Network error: please retry.")}</div>`;
+  } finally {
+    $("ask").disabled = false;
+  }
+}
+$("ask").onclick = ask;
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) ask(); });
+</script>
+</body>
+</html>

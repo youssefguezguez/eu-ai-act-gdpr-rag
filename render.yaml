@@ -1,0 +1,12 @@
+# Render Blueprint: New > Blueprint > pick this repo. Free plan, Docker build.
+services:
+  - type: web
+    name: eu-ai-act-gdpr-rag
+    runtime: docker
+    plan: free
+    region: frankfurt
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false   # entered once in the Render dashboard, never committed
