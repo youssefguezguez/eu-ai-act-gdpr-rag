@@ -38,7 +38,8 @@ def client():
 
 
 def test_health(client):
-    assert client.get("/health").json() == {"status": "ok", "chunks": 1461}
+    d = client.get("/health").json()
+    assert d["status"] == "ok" and d["chunks"] == 1461 and "llm_key_set" in d
 
 
 def test_page(client):
@@ -83,3 +84,16 @@ def test_rate_limiter_windows():
     assert rl.allow("a", 100) is True       # minute window passed
     assert rl.allow("a", 200) is False      # day cap of 3 reached
     assert rl.allow("a", 90000) is True     # next day
+
+
+def test_failed_answers_do_not_use_quota(client):
+    api.app.state.gen = (StubGen(fail_with="boom"), StubGen())
+    h = {"x-forwarded-for": "9.9.9.9"}
+    codes = [client.post("/ask", json={"question": "q"}, headers=h).status_code for _ in range(5)]
+    assert codes == [502] * 5
+
+
+def test_bad_key_is_explained(client):
+    api.app.state.gen = (StubGen(fail_with="Error code: 401 invalid_api_key"), StubGen())
+    r = client.post("/ask", json={"question": "q"})
+    assert r.status_code == 500 and "API key" in r.json()["detail"]

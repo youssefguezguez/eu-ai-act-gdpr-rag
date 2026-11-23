@@ -63,6 +63,12 @@ class RateLimiter:
             q.append(now)
             return True
 
+    def refund(self, key: str) -> None:
+        """Failed answers (provider errors) don't count against the visitor."""
+        with self.lock:
+            if self.hits[key]:
+                self.hits[key].pop()
+
 
 def build_generators() -> tuple[Generator, Generator]:
     gen = Generator(max_wait=20)
@@ -104,7 +110,7 @@ def index() -> FileResponse:
 @app.get("/health")
 def health() -> dict:
     gen, _ = generators()
-    return {"status": "ok", "chunks": len(gen.retriever.chunks)}
+    return {"status": "ok", "chunks": len(gen.retriever.chunks), "llm_key_set": bool(os.getenv("GROQ_API_KEY"))}
 
 
 @app.post("/ask")
@@ -112,9 +118,11 @@ def ask(body: Ask, request: Request) -> dict:
     question = body.question.strip()
     if not question:
         raise HTTPException(422, "Empty question.")
-    if not app.state.limiter.allow(client_ip(request)):
+    ip = client_ip(request)
+    if not app.state.limiter.allow(ip):
         raise HTTPException(429, f"Rate limit: {PER_MINUTE} questions per minute, {PER_DAY} per day.")
     if not app.state.slots.acquire(timeout=30):
+        app.state.limiter.refund(ip)
         raise HTTPException(503, "Busy: please retry in a minute.")
     gen, fb = generators()
     try:
@@ -126,7 +134,10 @@ def ask(body: Ask, request: Request) -> dict:
             out = fb.answer(question)
             out["model"] += " (fallback: main model's free daily quota used up)"
     except Exception as e:
+        app.state.limiter.refund(ip)
         log.info(json.dumps({"event": "error", "kind": type(e).__name__, "rate_limited": "429" in str(e)}))
+        if "GROQ_API_KEY missing" in str(e) or "401" in str(e) or "invalid_api_key" in str(e).lower():
+            raise HTTPException(500, "Server configuration error: the LLM API key is missing or invalid.")
         if "429" in str(e) or "rate" in str(e).lower():
             raise HTTPException(503, "The free model is busy (rate limit). Please retry in a minute.")
         raise HTTPException(502, "The model provider returned an error. Please retry in a minute.")
