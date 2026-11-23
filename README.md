@@ -8,7 +8,7 @@ The point of the project is less the chatbot than the **measurement**: a 76-ques
 with gold articles, a fixed dev/test split, and an ablation of every retrieval choice, so each
 design decision is backed by a number.
 
-**Live demo:** {{DEMO_URL}} (free hosting: the first question after a quiet period takes about a minute while
+**Live demo:** **[eu-ai-act-gdpr-rag.onrender.com](https://eu-ai-act-gdpr-rag.onrender.com)** (free hosting: the first question after a quiet period takes about a minute while
 the server wakes up). JSON API docs at `/docs`. Information, not legal advice. [![CI](https://github.com/youssefguezguez/eu-ai-act-gdpr-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/youssefguezguez/eu-ai-act-gdpr-rag/actions/workflows/ci.yml)
 
 | A cited answer (sources expanded) | Declining an out-of-scope question |
