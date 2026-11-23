@@ -76,12 +76,22 @@ def build_generators() -> tuple[Generator, Generator]:
     return gen, fb
 
 
+def warm_up() -> None:
+    """Load index + encoder in the background: free hosts have ~0.1 CPU, and blocking startup
+    on this made Render's port scan time out. Timings go to the log."""
+    t = time.perf_counter()
+    gen, _ = generators()
+    t1 = time.perf_counter()
+    gen.retriever.embeddings
+    gen.retriever.model
+    gen.retriever.model.encode(["warm up"])
+    log.info(json.dumps({"event": "warm", "build_s": round(t1 - t, 1), "load_s": round(time.perf_counter() - t1, 1)}))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not os.getenv("SKIP_WARMUP"):
-        gen, _ = generators()
-        gen.retriever.embeddings  # load index + encoder now, not on the first question
-        gen.retriever.model
+        threading.Thread(target=warm_up, daemon=True).start()
     yield
 
 
@@ -89,11 +99,13 @@ app = FastAPI(title="EU AI Act & GDPR assistant", version="1.0", lifespan=lifesp
 app.state.limiter = RateLimiter(PER_MINUTE, PER_DAY)
 app.state.slots = threading.BoundedSemaphore(MAX_CONCURRENT)
 app.state.gen = None
+_build_lock = threading.Lock()
 
 
 def generators() -> tuple[Generator, Generator]:
-    if app.state.gen is None:
-        app.state.gen = build_generators()
+    with _build_lock:  # requests that arrive during warm-up wait for it instead of building twice
+        if app.state.gen is None:
+            app.state.gen = build_generators()
     return app.state.gen
 
 
@@ -109,8 +121,10 @@ def index() -> FileResponse:
 
 @app.get("/health")
 def health() -> dict:
-    gen, _ = generators()
-    return {"status": "ok", "chunks": len(gen.retriever.chunks), "llm_key_set": bool(os.getenv("GROQ_API_KEY"))}
+    """Never blocks: answers while the model is still loading in the background."""
+    gen = app.state.gen
+    return {"status": "ok", "ready": gen is not None, "chunks": len(gen[0].retriever.chunks) if gen else 0,
+            "llm_key_set": bool(os.getenv("GROQ_API_KEY"))}
 
 
 @app.post("/ask")
